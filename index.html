@@ -324,27 +324,80 @@ function switchAuthTab(which){
 document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const errEl = document.getElementById('loginError');
+  const btn = e.target.querySelector('button[type=submit]');
+  if(btn.disabled) return; // already in flight — ignore double taps
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Logging in…';
+  errEl.style.color = '';
   errEl.textContent = '';
   const { error } = await sb.auth.signInWithPassword({
     email: document.getElementById('loginEmail').value.trim(),
     password: document.getElementById('loginPassword').value
   });
+  btn.disabled = false;
+  btn.textContent = originalLabel;
   if(error){ errEl.textContent = error.message; return; }
 });
 
 document.getElementById('signupForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const errEl = document.getElementById('signupError');
+  const btn = e.target.querySelector('button[type=submit]');
+  if(btn.disabled) return; // already in flight — ignore double taps
+  errEl.style.color = '';
   errEl.textContent = '';
   const username = document.getElementById('signupUsername').value.trim();
   if(username.length < 2){ errEl.textContent = 'Pick a patrol name (2+ characters).'; return; }
-  const { error } = await sb.auth.signUp({
-    email: document.getElementById('signupEmail').value.trim(),
-    password: document.getElementById('signupPassword').value,
+
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Creating account…';
+  errEl.style.color = 'var(--gold)';
+  errEl.textContent = 'Setting up your account, one sec…';
+
+  const { data, error } = await sb.auth.signUp({
+    email, password,
     options: { data: { username } }
   });
-  if(error){ errEl.textContent = error.message; return; }
-  toast('Account created — you\'re in!');
+
+  if(error){
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    errEl.style.color = '';
+    // A confusing but common case: they already have an account
+    // (maybe from an earlier attempt) and are trying to sign up again.
+    if(/already registered|already exists/i.test(error.message)){
+      errEl.textContent = 'That email already has an account — try the Log in tab instead.';
+    } else {
+      errEl.textContent = error.message;
+    }
+    return;
+  }
+
+  if(data && data.session){
+    // Normal case (email confirmation off): we're logged in immediately.
+    // onAuthStateChange will swap to the map screen on its own.
+    errEl.style.color = 'var(--gold)';
+    errEl.textContent = 'Account created! Loading the map…';
+    toast('Account created — you\'re in!');
+    return;
+  }
+
+  // Edge case: signUp succeeded but didn't hand back a session
+  // (can happen depending on project settings). Try logging straight
+  // in with the same credentials so the person isn't left stuck.
+  const { error: loginError } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false;
+  btn.textContent = originalLabel;
+  if(loginError){
+    errEl.style.color = '';
+    errEl.textContent = 'Account created! Check your email to confirm it, then log in.';
+  }
+  // if loginError is null, onAuthStateChange handles the transition.
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
@@ -367,7 +420,12 @@ async function enterApp(){
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('mapScreen').classList.remove('hidden');
 
-  if(cfg.ADMIN_EMAIL && currentUser.email === cfg.ADMIN_EMAIL){
+  // Ask the server whether this account is an admin — not a client-side
+  // email check. The button only shows for a real "yes", and even if
+  // someone forced it to show via dev tools, export_sightings_csv()
+  // would still reject them server-side.
+  const { data: adminCheck } = await sb.rpc('is_admin');
+  if(adminCheck === true){
     document.getElementById('exportBtn').style.display = '';
   }
 
@@ -420,18 +478,17 @@ function cartIcon(status){
 }
 
 async function refreshSightings(){
-  const { data, error } = await sb.from('sightings')
-    .select('id, lat, lng, status, note, created_at, reporter_id, profiles!sightings_reporter_id_fkey(username)')
-    .neq('status', 'hidden')
-    .order('created_at', {ascending:false})
-    .limit(500);
+  // Goes through the get_map_sightings() function, not a direct table
+  // select — see schema.sql. There is no client-readable policy on the
+  // sightings table itself, so this RPC is the only path to this data.
+  const { data, error } = await sb.rpc('get_map_sightings');
 
   pinLayer.clearLayers();
   if(error || !data) return;
 
   data.forEach(r=>{
     const marker = L.marker([r.lat, r.lng], {icon: cartIcon(r.status)}).addTo(pinLayer);
-    const reporterName = (r.profiles && r.profiles.username) || 'someone';
+    const reporterName = r.reporter_username || 'someone';
     const html = `
       <div class="popup-title ${r.status}">${r.status === 'verified' ? '✓ Confirmed cart' : 'Reported cart'}</div>
       <div class="popup-meta">by ${escapeHtml(reporterName)} · ${timeAgo(r.created_at)}</div>
@@ -512,15 +569,12 @@ async function renderBoard(){
   `).join('');
 }
 
-/* ---- CSV export (admin only, see config.js) ---- */
+/* ---- CSV export (real server-side admin check, see schema.sql) ---- */
 document.getElementById('exportBtn').addEventListener('click', async ()=>{
-  const { data, error } = await sb.from('sightings')
-    .select('id, lat, lng, status, created_at, confirmed_at')
-    .neq('status', 'hidden')
-    .order('created_at', {ascending:false});
-  if(error || !data){ toast('Export failed'); return; }
-  const rows = [['id','lat','lng','status','reported_at','confirmed_at']];
-  data.forEach(r => rows.push([r.id, r.lat, r.lng, r.status, r.created_at, r.confirmed_at || '']));
+  const { data, error } = await sb.rpc('export_sightings_csv');
+  if(error || !data){ toast(error && error.message === 'Not authorized' ? 'Not authorized' : 'Export failed'); return; }
+  const rows = [['id','lat','lng','status','note','reported_by','confirmed_by','reported_at','confirmed_at','flag_count']];
+  data.forEach(r => rows.push([r.id, r.lat, r.lng, r.status, r.note || '', r.reporter_username, r.confirmed_by_username || '', r.created_at, r.confirmed_at || '', r.flag_count]));
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv'});
   const a = document.createElement('a');
