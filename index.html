@@ -124,6 +124,23 @@
   }
   #reportBtn:active{transform:scale(0.93);}
   #reportBtn:disabled{opacity:0.5;}
+  #reportBtn.active{background:var(--danger); border-color:#7a231d;}
+
+  #placeBanner{
+    position:absolute; top:calc(env(safe-area-inset-top, 0px) + 74px); left:50%; transform:translateX(-50%);
+    z-index:1050; background:var(--dusk2); color:var(--paper); border:1px solid var(--gold);
+    padding:9px 14px; border-radius:10px; font-size:12.5px; text-align:center;
+    display:none; align-items:center; gap:10px; box-shadow:0 4px 14px rgba(0,0,0,0.4);
+  }
+  #placeBanner.show{display:flex;}
+  #placeBanner button{
+    background:none; border:1px solid rgba(255,255,255,0.25); color:var(--paper);
+    border-radius:6px; padding:4px 9px; font-size:11px; cursor:pointer;
+  }
+  .preview-pin{width:30px; height:30px; border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    display:flex; align-items:center; justify-content:center; border:2.5px dashed #1b1206;
+    background:rgba(232,163,61,0.55);}
+  .preview-pin span{transform:rotate(45deg); font-size:14px;}
 
   #installHint{
     position:absolute; left:14px; bottom:calc(env(safe-area-inset-bottom, 0px) + 30px); z-index:999;
@@ -171,6 +188,11 @@
     background:transparent; color:#ff9b8f; border:1px solid rgba(255,155,143,0.4); padding:6px 9px; border-radius:7px;
     font-size:11.5px; cursor:pointer; width:100%; font-family:'Inter',sans-serif;
   }
+  .popup-btn-confirm{
+    color:var(--verified); border-color:rgba(76,140,107,0.5); background:rgba(76,140,107,0.12);
+    font-weight:600;
+  }
+  .popup-btn:disabled{opacity:0.5;}
   .cart-pin{width:28px; height:28px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); display:flex; align-items:center; justify-content:center; border:2.5px solid #1b1206;}
   .cart-pin.unconfirmed{background:var(--gold);}
   .cart-pin.verified{background:var(--verified);}
@@ -250,20 +272,25 @@
       </div>
     </header>
 
+    <div id="placeBanner">
+      📍 Tap the map where you saw it
+      <button id="useMyLocationBtn">Use my location</button>
+      <button id="cancelPlaceBtn">✕</button>
+    </div>
     <div id="installHint">📲 Add Cart Corral to your home screen</div>
-    <button id="reportBtn">⊕</button>
+    <button id="reportBtn" title="Report a stray cart">⊕</button>
 
     <div id="overlay"></div>
 
-    <!-- report sheet -->
+    <!-- report sheet (appears after a spot is picked on the map) -->
     <div class="sheet" id="reportSheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-head"><h3>Report a stray cart</h3><button class="sheet-close" data-close>✕</button></div>
+      <div class="sheet-head"><h3>Report this spot</h3><button class="sheet-close" data-close="report">✕</button></div>
       <div class="sheet-body">
-        <p style="font-size:13px; color:rgba(27,27,27,0.65); margin:4px 0 0;">Uses your current location. If someone already reported a cart within ~30 ft, this confirms it instead of making a duplicate pin.</p>
+        <p style="font-size:13px; color:rgba(27,27,27,0.65); margin:4px 0 0;">Pin placed at the spot you tapped. Add a note if you'd like, then confirm.</p>
         <label>Note (optional)</label>
         <textarea id="reportNote" placeholder="e.g. blocking a handicap spot, tipped over…"></textarea>
-        <button class="primary-btn" id="submitReportBtn" style="margin-top:16px;">Drop pin at my location</button>
+        <button class="primary-btn" id="submitReportBtn" style="margin-top:16px;">Drop this pin</button>
         <div class="error-msg" id="reportStatus"></div>
       </div>
     </div>
@@ -474,6 +501,10 @@ async function boot(){
     L.circleMarker([myPos.lat, myPos.lng], {radius:7, color:'#4c8c6b', fillColor:'#4c8c6b', fillOpacity:0.9, weight:2})
       .addTo(map).bindPopup('You are here');
   }
+
+  map.on('click', (e)=>{
+    if(placingMode) placePreview(e.latlng.lat, e.latlng.lng);
+  });
 }
 
 function cartIcon(status){
@@ -496,16 +527,32 @@ async function refreshSightings(){
   data.forEach(r=>{
     const marker = L.marker([r.lat, r.lng], {icon: cartIcon(r.status)}).addTo(pinLayer);
     const reporterName = r.reporter_username || 'someone';
+    const isMine = currentUser && r.reporter_id === currentUser.id;
+
+    let actionBtn;
+    if(isMine){
+      actionBtn = `<button class="popup-btn" data-delete="${r.id}">🗑 Delete my report</button>`;
+    } else if(r.status === 'unconfirmed'){
+      actionBtn = `<button class="popup-btn popup-btn-confirm" data-confirm="${r.id}">✓ I'm here — confirm it (+5 pts)</button>
+                   <button class="popup-btn" data-flag="${r.id}" style="margin-top:6px;">🚩 Flag as fake / spam</button>`;
+    } else {
+      actionBtn = `<button class="popup-btn" data-flag="${r.id}">🚩 Flag as fake / spam</button>`;
+    }
+
     const html = `
       <div class="popup-title ${r.status}">${r.status === 'verified' ? '✓ Confirmed cart' : 'Reported cart'}</div>
-      <div class="popup-meta">by ${escapeHtml(reporterName)} · ${timeAgo(r.created_at)}</div>
+      <div class="popup-meta">by ${escapeHtml(reporterName)}${isMine ? ' (you)' : ''} · ${timeAgo(r.created_at)}</div>
       ${r.note ? `<div style="margin-bottom:9px;">${escapeHtml(r.note)}</div>` : ''}
-      <button class="popup-btn" data-flag="${r.id}">🚩 Flag as fake / spam</button>
+      ${actionBtn}
     `;
     marker.bindPopup(html);
     marker.on('popupopen', ()=>{
-      const btn = document.querySelector(`[data-flag="${r.id}"]`);
-      if(btn) btn.addEventListener('click', ()=>flagSighting(r.id));
+      const flagBtn = document.querySelector(`[data-flag="${r.id}"]`);
+      if(flagBtn) flagBtn.addEventListener('click', ()=>flagSighting(r.id));
+      const confirmBtn = document.querySelector(`[data-confirm="${r.id}"]`);
+      if(confirmBtn) confirmBtn.addEventListener('click', ()=>confirmSighting(r.id, confirmBtn));
+      const deleteBtn = document.querySelector(`[data-delete="${r.id}"]`);
+      if(deleteBtn) deleteBtn.addEventListener('click', ()=>deleteSighting(r.id));
     });
   });
 }
@@ -518,12 +565,90 @@ async function flagSighting(id){
   await refreshSightings();
 }
 
-/* ---- report sheet ---- */
-document.getElementById('reportBtn').addEventListener('click', ()=>openSheet('reportSheet'));
+async function confirmSighting(id, btnEl){
+  const originalLabel = btnEl.textContent;
+  btnEl.disabled = true;
+  btnEl.textContent = 'Checking your location…';
+  try{
+    const pos = await locateMe();
+    const { error } = await sb.rpc('confirm_sighting', { p_sighting_id: id, p_lat: pos.lat, p_lng: pos.lng });
+    if(error) throw error;
+    toast('Confirmed! +5 pts');
+    map.closePopup();
+    await refreshSightings();
+    await loadMyProfile();
+  }catch(e){
+    let msg = 'Could not confirm — try again';
+    if(e.message && e.message.includes('Too far')) msg = "You're too far from this pin to confirm it";
+    else if(e.message && e.message.includes('own report')) msg = "You can't confirm your own report";
+    else if(e.message && e.message.includes('Already confirmed')) msg = 'Already confirmed by someone else';
+    else if(e.code === 1 || /denied/i.test(e.message||'')) msg = 'Location permission needed to confirm';
+    toast(msg);
+    btnEl.disabled = false;
+    btnEl.textContent = originalLabel;
+  }
+}
+
+async function deleteSighting(id){
+  const { error } = await sb.rpc('delete_own_sighting', { p_sighting_id: id });
+  if(error){ toast('Could not delete — try again'); return; }
+  toast('Report deleted');
+  map.closePopup();
+  await refreshSightings();
+}
+
+/* ---- tap-to-place reporting ---- */
+let placingMode = false;
+let previewMarker = null;
+let pendingLatLng = null;
+
+document.getElementById('reportBtn').addEventListener('click', ()=>{
+  if(placingMode){ exitPlacingMode(); return; }
+  enterPlacingMode();
+});
+document.getElementById('cancelPlaceBtn').addEventListener('click', exitPlacingMode);
+document.getElementById('useMyLocationBtn').addEventListener('click', async ()=>{
+  try{
+    const pos = await locateMe();
+    myPos = pos;
+    map.panTo([pos.lat, pos.lng]);
+    placePreview(pos.lat, pos.lng);
+  }catch(e){
+    toast('Could not get your location');
+  }
+});
+
+function enterPlacingMode(){
+  placingMode = true;
+  document.getElementById('reportBtn').classList.add('active');
+  document.getElementById('reportBtn').textContent = '✕';
+  document.getElementById('placeBanner').classList.add('show');
+}
+function exitPlacingMode(){
+  placingMode = false;
+  document.getElementById('reportBtn').classList.remove('active');
+  document.getElementById('reportBtn').textContent = '⊕';
+  document.getElementById('placeBanner').classList.remove('show');
+  if(previewMarker){ pinLayer.removeLayer(previewMarker); previewMarker = null; }
+  pendingLatLng = null;
+}
+
+function placePreview(lat, lng){
+  pendingLatLng = {lat, lng};
+  if(previewMarker) pinLayer.removeLayer(previewMarker);
+  previewMarker = L.marker([lat, lng], {
+    icon: L.divIcon({ className:'', html:'<div class="preview-pin"><span>🛒</span></div>', iconSize:[30,30], iconAnchor:[15,28] })
+  }).addTo(pinLayer);
+  openSheet('reportSheet');
+}
+
 document.getElementById('scoreBtn').addEventListener('click', async ()=>{ await renderBoard(); openSheet('boardSheet'); });
 document.getElementById('installHint').addEventListener('click', ()=>openSheet('installSheet'));
 document.getElementById('overlay').addEventListener('click', closeAllSheets);
-document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', closeAllSheets));
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', ()=>{
+  closeAllSheets();
+  if(b.dataset.close === 'report') exitPlacingMode();
+}));
 
 function openSheet(id){
   document.getElementById('overlay').classList.add('show');
@@ -538,24 +663,35 @@ document.getElementById('submitReportBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('submitReportBtn');
   const statusEl = document.getElementById('reportStatus');
   const note = document.getElementById('reportNote').value.trim();
+
+  if(!pendingLatLng){
+    statusEl.textContent = 'Tap a spot on the map first.';
+    return;
+  }
+
   btn.disabled = true;
-  statusEl.textContent = 'Getting your location…';
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Dropping pin…';
+  statusEl.style.color = 'var(--wood)';
+  statusEl.textContent = 'Saving your report…';
+
   try{
-    const pos = await locateMe();
-    myPos = pos;
-    const { data, error } = await sb.rpc('submit_sighting', { p_lat: pos.lat, p_lng: pos.lng, p_note: note || null });
+    const { error } = await sb.rpc('submit_sighting', { p_lat: pendingLatLng.lat, p_lng: pendingLatLng.lng, p_note: note || null });
     if(error) throw error;
     document.getElementById('reportNote').value = '';
     statusEl.textContent = '';
     closeAllSheets();
+    exitPlacingMode();
     toast('Pin dropped — thanks for the report!');
-    map.setView([pos.lat, pos.lng], 17);
+    map.setView([pendingLatLng.lat, pendingLatLng.lng], 17);
     await refreshSightings();
     await loadMyProfile();
   }catch(e){
-    statusEl.textContent = e.message === 'Must be logged in' ? 'Please log in again.' : 'Could not get your location — check location permissions.';
+    statusEl.style.color = '';
+    statusEl.textContent = e.message === 'Must be logged in' ? 'Please log in again.' : 'Could not save — try again.';
   }finally{
     btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 });
 
