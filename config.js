@@ -11,7 +11,7 @@
 // ------------------------------------------------------------
 
 window.CART_CORRAL_CONFIG = {
-  SUPABASE_URL: "https://sdfhbiykcovfqmigdwsv.supabase.co/rest/v1/",
+  SUPABASE_URL: "https://sdfhbiykcovfqmigdwsv.supabase.co",
   SUPABASE_ANON_KEY: "sb_publishable_zOqV85kvzDslAQ7oyO99pQ_P5Iw3kB1",
 
   // Optional: if the logged-in user's email matches this, they'll
