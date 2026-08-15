@@ -93,12 +93,13 @@
     background:linear-gradient(180deg, rgba(27,36,48,0.95) 0%, rgba(27,36,48,0.0) 100%);
     pointer-events:none;
     display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
+    flex-wrap:wrap;
   }
   .brand{display:flex; align-items:center; gap:9px; pointer-events:auto;}
   .brand-mark-sm{width:28px;height:28px;border-radius:6px;background:linear-gradient(180deg, var(--gold), #c97f22); border:2px solid #6b4527; flex-shrink:0;}
   .brand h2{font-size:15px; letter-spacing:0.03em; color:var(--paper); line-height:1.1;}
   .brand span{display:block; font-size:9px; color:var(--fade); font-family:'JetBrains Mono',monospace; letter-spacing:0.06em; margin-top:2px;}
-  .header-actions{display:flex; gap:7px; pointer-events:auto;}
+  .header-actions{display:flex; gap:7px; pointer-events:auto; flex-wrap:wrap; justify-content:flex-end;}
   .icon-btn{
     background:var(--dusk2); border:1px solid rgba(255,255,255,0.1); color:var(--rope);
     font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:8px 10px; border-radius:9px;
@@ -239,7 +240,7 @@
       <div class="header-actions">
         <button class="icon-btn" id="exportBtn" style="display:none;">⬇ CSV</button>
         <button class="icon-btn" id="scoreBtn">🏆 <b id="myPts">0</b></button>
-        <button class="icon-btn" id="logoutBtn">⎋</button>
+        <button class="icon-btn" id="logoutBtn">↪ Log out</button>
       </div>
     </header>
 
