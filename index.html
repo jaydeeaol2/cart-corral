@@ -55,10 +55,16 @@
   #authScreen{
     position:absolute; inset:0; z-index:2000; background:
       radial-gradient(ellipse at top, #2a3646 0%, #1b2430 60%);
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    padding:24px; overflow-y:auto;
+    display:flex; flex-direction:column; align-items:center;
+    /* top-aligned + scrollable, not centered — centering a flex child
+       taller than the screen makes the top or bottom unreachable on
+       iOS Safari, which is exactly what was cutting the form off */
+    justify-content:flex-start;
+    padding:calc(env(safe-area-inset-top, 0px) + 28px) 20px calc(env(safe-area-inset-bottom, 0px) + 40px);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
   }
-  .auth-card{width:100%; max-width:360px;}
+  .auth-card{width:100%; max-width:360px; margin:0 auto;}
   .brand-block{text-align:center; margin-bottom:26px;}
   .fence-icon{
     width:56px; height:56px; margin:0 auto 12px; border-radius:12px;
