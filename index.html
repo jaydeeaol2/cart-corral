@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cart Corral</title>
+<meta name="description" content="Report stray Target shopping carts you spot around town. Unofficial community tool, not affiliated with Target.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1b2430">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="config.js"></script>
+
+<style>
+  :root{
+    --dusk:#1b2430; --dusk2:#242f3d; --gold:#e8a33d; --wood:#8b5e3c;
+    --rope:#d8c39c; --paper:#f3ede0; --ink:#1b1b1b;
+    --danger:#c1443c; --verified:#4c8c6b;
+    --fade:rgba(216,195,156,0.55);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--dusk);color:var(--rope);font-family:'Inter',sans-serif;overflow:hidden;}
+  #app{position:relative;width:100%;height:100vh;height:100dvh;}
+  button{font-family:inherit;}
+
+  /* ---------- shared ---------- */
+  .hidden{display:none !important;}
+  h1,h2,h3{font-family:'Oswald',sans-serif; text-transform:uppercase; margin:0;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .primary-btn{
+    width:100%; padding:13px; border-radius:10px; border:none;
+    background:var(--gold); color:#1b1206; font-family:'Oswald',sans-serif;
+    text-transform:uppercase; letter-spacing:0.04em; font-size:14px; font-weight:600;
+    cursor:pointer;
+  }
+  .primary-btn:disabled{opacity:0.4;}
+  .ghost-btn{
+    width:100%; padding:11px; border-radius:10px; border:1.5px solid rgba(216,195,156,0.3);
+    background:transparent; color:var(--rope); font-size:13.5px; cursor:pointer;
+  }
+  .link-btn{background:none;border:none;color:var(--gold);text-decoration:underline;cursor:pointer;font-size:13px;padding:0;}
+  input[type=text], input[type=email], input[type=password], textarea{
+    width:100%; padding:11px 12px; border-radius:9px; border:1.5px solid rgba(255,255,255,0.12);
+    font-family:'Inter',sans-serif; font-size:14.5px; background:rgba(255,255,255,0.06); color:var(--rope);
+  }
+  input::placeholder, textarea::placeholder{color:rgba(216,195,156,0.4);}
+  label{display:block; font-family:'JetBrains Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--fade); margin:14px 0 6px;}
+  .error-msg{color:#ff9b8f; font-size:12.5px; margin-top:8px; font-family:'JetBrains Mono',monospace; min-height:16px;}
+
+  /* ---------- auth screen ---------- */
+  #authScreen{
+    position:absolute; inset:0; z-index:2000; background:
+      radial-gradient(ellipse at top, #2a3646 0%, #1b2430 60%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; overflow-y:auto;
+  }
+  .auth-card{width:100%; max-width:360px;}
+  .brand-block{text-align:center; margin-bottom:26px;}
+  .fence-icon{
+    width:56px; height:56px; margin:0 auto 12px; border-radius:12px;
+    background: repeating-linear-gradient(90deg, var(--wood) 0 8px, transparent 8px 16px),
+                linear-gradient(180deg, var(--gold), #c97f22);
+    background-blend-mode: overlay;
+    border:2px solid #6b4527;
+  }
+  .brand-block h1{font-size:26px; letter-spacing:0.02em; color:var(--paper);}
+  .brand-block p{margin:6px 0 0; font-size:12.5px; color:var(--fade); font-family:'JetBrains Mono',monospace;}
+  .disclaimer-chip{
+    margin-top:14px; padding:9px 12px; border-radius:9px; background:rgba(0,0,0,0.25);
+    border:1px solid rgba(255,255,255,0.08); font-size:11px; line-height:1.5; color:var(--fade);
+  }
+  .auth-tabs{display:flex; gap:8px; margin-bottom:18px;}
+  .auth-tab{
+    flex:1; padding:9px; text-align:center; border-radius:8px; cursor:pointer;
+    font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:12.5px; letter-spacing:0.03em;
+    background:rgba(255,255,255,0.05); color:var(--fade);
+  }
+  .auth-tab.active{background:var(--gold); color:#1b1206;}
+  .terms-row{display:flex; align-items:flex-start; gap:8px; margin-top:16px; font-size:12px; color:var(--fade);}
+  .terms-row input{width:auto; margin-top:2px;}
+
+  /* ---------- main map screen ---------- */
+  #mapScreen{position:absolute; inset:0;}
+  #map{position:absolute; inset:0; filter:saturate(0.85) contrast(1.02);}
+
+  header{
+    position:absolute; top:0; left:0; right:0; z-index:1000;
+    padding:calc(env(safe-area-inset-top, 0px) + 12px) 14px 40px;
+    background:linear-gradient(180deg, rgba(27,36,48,0.95) 0%, rgba(27,36,48,0.0) 100%);
+    pointer-events:none;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
+  }
+  .brand{display:flex; align-items:center; gap:9px; pointer-events:auto;}
+  .brand-mark-sm{width:28px;height:28px;border-radius:6px;background:linear-gradient(180deg, var(--gold), #c97f22); border:2px solid #6b4527; flex-shrink:0;}
+  .brand h2{font-size:15px; letter-spacing:0.03em; color:var(--paper); line-height:1.1;}
+  .brand span{display:block; font-size:9px; color:var(--fade); font-family:'JetBrains Mono',monospace; letter-spacing:0.06em; margin-top:2px;}
+  .header-actions{display:flex; gap:7px; pointer-events:auto;}
+  .icon-btn{
+    background:var(--dusk2); border:1px solid rgba(255,255,255,0.1); color:var(--rope);
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:8px 10px; border-radius:9px;
+    cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .icon-btn b{color:var(--gold);}
+
+  #reportBtn{
+    position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 22px); right:16px; z-index:1000;
+    width:62px; height:62px; border-radius:50%;
+    background:var(--gold); color:#1b1206; border:3px solid #6b4527;
+    font-size:28px; font-weight:700; cursor:pointer;
+    box-shadow:0 6px 18px rgba(0,0,0,0.5);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Oswald',sans-serif;
+  }
+  #reportBtn:active{transform:scale(0.93);}
+  #reportBtn:disabled{opacity:0.5;}
+
+  #installHint{
+    position:absolute; left:14px; bottom:calc(env(safe-area-inset-bottom, 0px) + 30px); z-index:999;
+    font-size:11px; color:var(--fade); background:rgba(27,36,48,0.85); padding:6px 10px; border-radius:8px;
+    max-width:170px; font-family:'JetBrains Mono',monospace; cursor:pointer; text-decoration:underline;
+    border:1px solid rgba(255,255,255,0.08);
+  }
+
+  /* bottom sheet (shared for leaderboard / add-to-home / etc) */
+  #overlay{position:absolute; inset:0; background:rgba(0,0,0,0.4); z-index:1400; opacity:0; pointer-events:none; transition:opacity .2s;}
+  #overlay.show{opacity:1; pointer-events:auto;}
+  .sheet{
+    position:absolute; left:0; right:0; bottom:0; z-index:1500;
+    background:var(--paper); color:var(--ink);
+    border-radius:18px 18px 0 0; box-shadow:0 -8px 30px rgba(0,0,0,0.5);
+    transform:translateY(105%); transition:transform .28s cubic-bezier(.32,.72,0,1);
+    max-height:82vh; overflow-y:auto; padding-bottom:26px;
+  }
+  .sheet.open{transform:translateY(0);}
+  .sheet-handle{width:38px;height:4px;background:rgba(27,27,27,0.2);border-radius:3px;margin:10px auto 4px;}
+  .sheet-head{display:flex; align-items:center; justify-content:space-between; padding:8px 18px 4px;}
+  .sheet-head h3{font-size:15px;}
+  .sheet-close{background:none;border:none;font-size:20px;color:var(--ink);cursor:pointer;opacity:0.5;}
+  .sheet-body{padding:6px 18px 4px;}
+
+  .board-row{display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px dashed rgba(27,27,27,0.15);}
+  .board-row:last-child{border-bottom:none;}
+  .board-name{font-weight:600; font-size:14.5px; display:flex; align-items:center; gap:8px;}
+  .board-rank{font-family:'JetBrains Mono',monospace; font-size:11px; color:rgba(27,27,27,0.45); width:22px; display:inline-block;}
+  .board-pts{font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--wood); font-size:14px;}
+  #emptyBoard{padding:22px 0; text-align:center; color:rgba(27,27,27,0.4); font-size:13px;}
+
+  .install-steps{font-size:13.5px; line-height:1.7;}
+  .install-steps b{color:var(--wood);}
+
+  /* leaflet popup */
+  .leaflet-popup-content-wrapper{background:var(--dusk2); color:var(--rope); border-radius:10px; border:1px solid rgba(255,255,255,0.1);}
+  .leaflet-popup-tip{background:var(--dusk2);}
+  .leaflet-popup-content{font-family:'Inter',sans-serif; font-size:13px; margin:11px 13px; min-width:170px;}
+  .popup-title{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:12px; letter-spacing:0.03em; margin-bottom:3px;}
+  .popup-title.unconfirmed{color:var(--gold);}
+  .popup-title.verified{color:var(--verified);}
+  .popup-meta{color:var(--fade); font-size:10.5px; font-family:'JetBrains Mono',monospace; margin-bottom:9px;}
+  .popup-btn{
+    background:transparent; color:#ff9b8f; border:1px solid rgba(255,155,143,0.4); padding:6px 9px; border-radius:7px;
+    font-size:11.5px; cursor:pointer; width:100%; font-family:'Inter',sans-serif;
+  }
+  .cart-pin{width:28px; height:28px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); display:flex; align-items:center; justify-content:center; border:2.5px solid #1b1206;}
+  .cart-pin.unconfirmed{background:var(--gold);}
+  .cart-pin.verified{background:var(--verified);}
+  .cart-pin span{transform:rotate(45deg); font-size:13px;}
+
+  #toast{
+    position:absolute; top:calc(env(safe-area-inset-top,0px) + 78px); left:50%; transform:translateX(-50%) translateY(-16px);
+    background:#1b1206; color:var(--gold); padding:9px 16px; border-radius:20px;
+    font-family:'JetBrains Mono',monospace; font-size:12px; z-index:1300;
+    opacity:0; transition:all .25s ease; pointer-events:none; white-space:nowrap; border:1px solid var(--gold);
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- =============== AUTH SCREEN =============== -->
+  <div id="authScreen">
+    <div class="auth-card">
+      <div class="brand-block">
+        <div class="fence-icon"></div>
+        <h1>Cart Corral</h1>
+        <p>spot &amp; report stray Target carts</p>
+        <div class="disclaimer-chip">
+          Cart Corral is an independent, unofficial community tool for reporting Target-owned shopping carts left in public areas. It is not made by, run by, or affiliated with Target Corporation.
+        </div>
+      </div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabLogin">Log in</div>
+        <div class="auth-tab" id="tabSignup">Sign up</div>
+      </div>
+
+      <form id="loginForm">
+        <label>Email</label>
+        <input type="email" id="loginEmail" required autocomplete="email">
+        <label>Password</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+        <button type="submit" class="primary-btn" style="margin-top:18px;">Log in</button>
+        <div class="error-msg" id="loginError"></div>
+      </form>
+
+      <form id="signupForm" class="hidden">
+        <label>Patrol name</label>
+        <input type="text" id="signupUsername" maxlength="24" required placeholder="shown on the leaderboard">
+        <label>Email</label>
+        <input type="email" id="signupEmail" required autocomplete="email">
+        <label>Password</label>
+        <input type="password" id="signupPassword" required minlength="6" autocomplete="new-password">
+        <div class="terms-row">
+          <input type="checkbox" id="agreeTerms" required>
+          <span>I agree to the <a href="terms.html" target="_blank" style="color:var(--gold);">Terms &amp; Privacy Notice</a>, including that reported cart locations may be shared with retailers to help recover carts.</span>
+        </div>
+        <button type="submit" class="primary-btn" style="margin-top:18px;">Create account</button>
+        <div class="error-msg" id="signupError"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =============== MAIN MAP SCREEN =============== -->
+  <div id="mapScreen" class="hidden">
+    <div id="map"></div>
+
+    <header>
+      <div class="brand">
+        <div class="brand-mark-sm"></div>
+        <div>
+          <h2>Cart Corral</h2>
+          <span>unofficial &middot; not affiliated with Target</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="exportBtn" style="display:none;">⬇ CSV</button>
+        <button class="icon-btn" id="scoreBtn">🏆 <b id="myPts">0</b></button>
+        <button class="icon-btn" id="logoutBtn">⎋</button>
+      </div>
+    </header>
+
+    <div id="installHint">📲 Add Cart Corral to your home screen</div>
+    <button id="reportBtn">⊕</button>
+
+    <div id="overlay"></div>
+
+    <!-- report sheet -->
+    <div class="sheet" id="reportSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><h3>Report a stray cart</h3><button class="sheet-close" data-close>✕</button></div>
+      <div class="sheet-body">
+        <p style="font-size:13px; color:rgba(27,27,27,0.65); margin:4px 0 0;">Uses your current location. If someone already reported a cart within ~30 ft, this confirms it instead of making a duplicate pin.</p>
+        <label>Note (optional)</label>
+        <textarea id="reportNote" placeholder="e.g. blocking a handicap spot, tipped over…"></textarea>
+        <button class="primary-btn" id="submitReportBtn" style="margin-top:16px;">Drop pin at my location</button>
+        <div class="error-msg" id="reportStatus"></div>
+      </div>
+    </div>
+
+    <!-- leaderboard sheet -->
+    <div class="sheet" id="boardSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><h3>Leaderboard</h3><button class="sheet-close" data-close>✕</button></div>
+      <div class="sheet-body"><div id="boardList"></div></div>
+    </div>
+
+    <!-- install instructions sheet -->
+    <div class="sheet" id="installSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><h3>Add to home screen</h3><button class="sheet-close" data-close>✕</button></div>
+      <div class="sheet-body">
+        <div class="install-steps" id="installSteps"></div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+  </div>
+
+</div>
+
+<script>
+const cfg = window.CART_CORRAL_CONFIG || {};
+if(!cfg.SUPABASE_URL || cfg.SUPABASE_URL.includes('YOUR-PROJECT')){
+  document.write('<div style="position:fixed;inset:0;background:#1b2430;color:#e8a33d;font-family:monospace;padding:24px;font-size:14px;line-height:1.6;">config.js is not set up yet.<br><br>Copy config.sample.js to config.js and fill in your Supabase project URL + anon key. See README.md.</div>');
+  throw new Error('Missing config');
+}
+const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+
+const RADIUS_M = 9.14; // ~30 ft, must match schema.sql
+let map, pinLayer, myPos = null, currentUser = null, myProfile = null;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function timeAgo(ts){
+  const mins = Math.round((Date.now()-new Date(ts).getTime())/60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return mins + 'm ago';
+  const hrs = Math.round(mins/60);
+  if(hrs < 24) return hrs + 'h ago';
+  return Math.round(hrs/24) + 'd ago';
+}
+
+/* ---------------- AUTH ---------------- */
+document.getElementById('tabLogin').onclick = () => switchAuthTab('login');
+document.getElementById('tabSignup').onclick = () => switchAuthTab('signup');
+function switchAuthTab(which){
+  document.getElementById('tabLogin').classList.toggle('active', which==='login');
+  document.getElementById('tabSignup').classList.toggle('active', which==='signup');
+  document.getElementById('loginForm').classList.toggle('hidden', which!=='login');
+  document.getElementById('signupForm').classList.toggle('hidden', which!=='signup');
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  const { error } = await sb.auth.signInWithPassword({
+    email: document.getElementById('loginEmail').value.trim(),
+    password: document.getElementById('loginPassword').value
+  });
+  if(error){ errEl.textContent = error.message; return; }
+});
+
+document.getElementById('signupForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const errEl = document.getElementById('signupError');
+  errEl.textContent = '';
+  const username = document.getElementById('signupUsername').value.trim();
+  if(username.length < 2){ errEl.textContent = 'Pick a patrol name (2+ characters).'; return; }
+  const { error } = await sb.auth.signUp({
+    email: document.getElementById('signupEmail').value.trim(),
+    password: document.getElementById('signupPassword').value,
+    options: { data: { username } }
+  });
+  if(error){ errEl.textContent = error.message; return; }
+  toast('Account created — you\'re in!');
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+});
+
+sb.auth.onAuthStateChange((event, session)=>{
+  if(session && session.user){
+    currentUser = session.user;
+    enterApp();
+  } else {
+    currentUser = null;
+    document.getElementById('authScreen').classList.remove('hidden');
+    document.getElementById('mapScreen').classList.add('hidden');
+  }
+});
+
+/* ---------------- MAIN APP ---------------- */
+async function enterApp(){
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('mapScreen').classList.remove('hidden');
+
+  if(cfg.ADMIN_EMAIL && currentUser.email === cfg.ADMIN_EMAIL){
+    document.getElementById('exportBtn').style.display = '';
+  }
+
+  await loadMyProfile();
+  if(!map) await boot();
+  await refreshSightings();
+  maybeShowInstallHint();
+}
+
+async function loadMyProfile(){
+  const { data } = await sb.from('profiles').select('username, points').eq('id', currentUser.id).single();
+  myProfile = data;
+  document.getElementById('myPts').textContent = (data && data.points) || 0;
+}
+
+function locateMe(){
+  return new Promise((resolve, reject)=>{
+    if(!navigator.geolocation){ reject(new Error('Geolocation not supported')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({lat:pos.coords.latitude, lng:pos.coords.longitude}),
+      err => reject(err),
+      {enableHighAccuracy:true, timeout:8000}
+    );
+  });
+}
+
+async function boot(){
+  let start = {lat:31.2, lng:-92.4}; // rough Louisiana-ish fallback, town-wide app so zoom is low
+  try{ myPos = await locateMe(); start = myPos; }catch(e){ /* fallback stays */ }
+
+  map = L.map('map', {zoomControl:false}).setView([start.lat, start.lng], myPos ? 15 : 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20, attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  L.control.zoom({position:'bottomleft'}).addTo(map);
+  pinLayer = L.layerGroup().addTo(map);
+
+  if(myPos){
+    L.circleMarker([myPos.lat, myPos.lng], {radius:7, color:'#4c8c6b', fillColor:'#4c8c6b', fillOpacity:0.9, weight:2})
+      .addTo(map).bindPopup('You are here');
+  }
+}
+
+function cartIcon(status){
+  return L.divIcon({
+    className:'',
+    html:`<div class="cart-pin ${status}"><span>🛒</span></div>`,
+    iconSize:[28,28], iconAnchor:[14,26]
+  });
+}
+
+async function refreshSightings(){
+  const { data, error } = await sb.from('sightings')
+    .select('id, lat, lng, status, note, created_at, reporter_id, profiles!sightings_reporter_id_fkey(username)')
+    .neq('status', 'hidden')
+    .order('created_at', {ascending:false})
+    .limit(500);
+
+  pinLayer.clearLayers();
+  if(error || !data) return;
+
+  data.forEach(r=>{
+    const marker = L.marker([r.lat, r.lng], {icon: cartIcon(r.status)}).addTo(pinLayer);
+    const reporterName = (r.profiles && r.profiles.username) || 'someone';
+    const html = `
+      <div class="popup-title ${r.status}">${r.status === 'verified' ? '✓ Confirmed cart' : 'Reported cart'}</div>
+      <div class="popup-meta">by ${escapeHtml(reporterName)} · ${timeAgo(r.created_at)}</div>
+      ${r.note ? `<div style="margin-bottom:9px;">${escapeHtml(r.note)}</div>` : ''}
+      <button class="popup-btn" data-flag="${r.id}">🚩 Flag as fake / spam</button>
+    `;
+    marker.bindPopup(html);
+    marker.on('popupopen', ()=>{
+      const btn = document.querySelector(`[data-flag="${r.id}"]`);
+      if(btn) btn.addEventListener('click', ()=>flagSighting(r.id));
+    });
+  });
+}
+
+async function flagSighting(id){
+  const { error } = await sb.rpc('flag_sighting', { p_sighting_id: id });
+  if(error){ toast('Could not flag — try again'); return; }
+  toast('Flagged for review');
+  map.closePopup();
+  await refreshSightings();
+}
+
+/* ---- report sheet ---- */
+document.getElementById('reportBtn').addEventListener('click', ()=>openSheet('reportSheet'));
+document.getElementById('scoreBtn').addEventListener('click', async ()=>{ await renderBoard(); openSheet('boardSheet'); });
+document.getElementById('installHint').addEventListener('click', ()=>openSheet('installSheet'));
+document.getElementById('overlay').addEventListener('click', closeAllSheets);
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', closeAllSheets));
+
+function openSheet(id){
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById(id).classList.add('open');
+}
+function closeAllSheets(){
+  document.getElementById('overlay').classList.remove('show');
+  document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+}
+
+document.getElementById('submitReportBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('submitReportBtn');
+  const statusEl = document.getElementById('reportStatus');
+  const note = document.getElementById('reportNote').value.trim();
+  btn.disabled = true;
+  statusEl.textContent = 'Getting your location…';
+  try{
+    const pos = await locateMe();
+    myPos = pos;
+    const { data, error } = await sb.rpc('submit_sighting', { p_lat: pos.lat, p_lng: pos.lng, p_note: note || null });
+    if(error) throw error;
+    document.getElementById('reportNote').value = '';
+    statusEl.textContent = '';
+    closeAllSheets();
+    toast('Pin dropped — thanks for the report!');
+    map.setView([pos.lat, pos.lng], 17);
+    await refreshSightings();
+    await loadMyProfile();
+  }catch(e){
+    statusEl.textContent = e.message === 'Must be logged in' ? 'Please log in again.' : 'Could not get your location — check location permissions.';
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+/* ---- leaderboard ---- */
+async function renderBoard(){
+  const list = document.getElementById('boardList');
+  const { data, error } = await sb.from('profiles').select('username, points').order('points', {ascending:false}).limit(50);
+  if(error || !data || data.length === 0){
+    list.innerHTML = '<div id="emptyBoard">No points on the board yet — go spot a cart.</div>';
+    return;
+  }
+  const medals = ['🥇','🥈','🥉'];
+  list.innerHTML = data.map((e,i)=>`
+    <div class="board-row">
+      <div class="board-name"><span class="board-rank">${medals[i]||(i+1)}</span>${escapeHtml(e.username)}</div>
+      <div class="board-pts">${e.points} pts</div>
+    </div>
+  `).join('');
+}
+
+/* ---- CSV export (admin only, see config.js) ---- */
+document.getElementById('exportBtn').addEventListener('click', async ()=>{
+  const { data, error } = await sb.from('sightings')
+    .select('id, lat, lng, status, created_at, confirmed_at')
+    .neq('status', 'hidden')
+    .order('created_at', {ascending:false});
+  if(error || !data){ toast('Export failed'); return; }
+  const rows = [['id','lat','lng','status','reported_at','confirmed_at']];
+  data.forEach(r => rows.push([r.id, r.lat, r.lng, r.status, r.created_at, r.confirmed_at || '']));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cart-corral-sightings-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+});
+
+/* ---- add-to-home-screen hint ---- */
+function maybeShowInstallHint(){
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if(isStandalone){ document.getElementById('installHint').style.display = 'none'; return; }
+
+  const steps = document.getElementById('installSteps');
+  if(isIOS){
+    steps.innerHTML = `
+      <p>On <b>iPhone / iPad (Safari)</b>:</p>
+      <ol>
+        <li>Tap the <b>Share</b> icon (square with an arrow) in Safari's toolbar</li>
+        <li>Scroll down and tap <b>Add to Home Screen</b></li>
+        <li>Tap <b>Add</b> — Cart Corral now opens like a regular app</li>
+      </ol>`;
+  } else {
+    steps.innerHTML = `
+      <p>On <b>Android (Chrome)</b>:</p>
+      <ol>
+        <li>Tap the <b>⋮</b> menu in the top right</li>
+        <li>Tap <b>Add to Home screen</b> (or <b>Install app</b>)</li>
+        <li>Confirm — Cart Corral now opens like a regular app</li>
+      </ol>
+      <p style="margin-top:10px;">On other browsers, look for a similar "Add to Home screen" or "Install" option in the menu.</p>`;
+  }
+}
+
+/* register service worker for installability */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>

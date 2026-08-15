@@ -1,0 +1,16 @@
+{
+  "name": "Cart Corral",
+  "short_name": "Cart Corral",
+  "description": "Report stray Target shopping carts you spot around town. Unofficial.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1b2430",
+  "theme_color": "#1b2430",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
