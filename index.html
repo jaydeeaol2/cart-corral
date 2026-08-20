@@ -112,6 +112,9 @@
     cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap;
   }
   .icon-btn b{color:var(--gold);}
+  .help-btn-prominent{
+    background:var(--gold); color:#1b1206; border-color:#6b4527; font-weight:700;
+  }
 
   #reportBtn{
     position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 22px); right:16px; z-index:1000;
@@ -276,9 +279,9 @@
         </div>
       </div>
       <div class="header-actions">
+        <button class="icon-btn help-btn-prominent" id="helpBtn">❔ How it works</button>
         <button class="icon-btn" id="exportBtn" style="display:none;">⬇ CSV</button>
         <button class="icon-btn" id="scoreBtn">🏆 <b id="myPts">0</b></button>
-        <button class="icon-btn" id="helpBtn">❔ Help</button>
         <button class="icon-btn" id="logoutBtn">↪ Log out</button>
       </div>
     </header>
@@ -514,6 +517,15 @@ async function enterApp(){
   if(!map) await boot();
   await refreshSightings();
   maybeShowInstallHint();
+  maybeShowFirstTimeHelp();
+}
+
+function maybeShowFirstTimeHelp(){
+  const seenKey = 'cart_corral_help_seen_' + currentUser.id;
+  if(localStorage.getItem(seenKey)) return;
+  localStorage.setItem(seenKey, '1');
+  // Small delay so it doesn't fight with the map/report-button entrance.
+  setTimeout(()=>openSheet('helpSheet'), 500);
 }
 
 async function loadMyProfile(){
