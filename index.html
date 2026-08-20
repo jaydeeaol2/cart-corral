@@ -176,6 +176,13 @@
   .install-steps{font-size:13.5px; line-height:1.7;}
   .install-steps b{color:var(--wood);}
 
+  .help-body h4{font-size:13.5px; margin:18px 0 4px; color:var(--wood); letter-spacing:0.01em;}
+  .help-body h4:first-child{margin-top:6px;}
+  .help-body p{font-size:13.5px; line-height:1.6; margin:0 0 4px; color:rgba(27,27,27,0.85);}
+  .help-body ul{margin:6px 0; padding-left:20px;}
+  .help-body li{font-size:13.5px; line-height:1.6; margin-bottom:8px; color:rgba(27,27,27,0.85);}
+  .help-body b{color:var(--ink);}
+
   /* leaflet popup */
   .leaflet-popup-content-wrapper{background:var(--dusk2); color:var(--rope); border-radius:10px; border:1px solid rgba(255,255,255,0.1);}
   .leaflet-popup-tip{background:var(--dusk2);}
@@ -191,6 +198,9 @@
   .popup-btn-confirm{
     color:var(--verified); border-color:rgba(76,140,107,0.5); background:rgba(76,140,107,0.12);
     font-weight:600;
+  }
+  .popup-btn-vouch{
+    color:var(--gold); border-color:rgba(232,163,61,0.5); background:rgba(232,163,61,0.1);
   }
   .popup-btn:disabled{opacity:0.5;}
   .cart-pin{width:28px; height:28px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); display:flex; align-items:center; justify-content:center; border:2.5px solid #1b1206;}
@@ -268,6 +278,7 @@
       <div class="header-actions">
         <button class="icon-btn" id="exportBtn" style="display:none;">⬇ CSV</button>
         <button class="icon-btn" id="scoreBtn">🏆 <b id="myPts">0</b></button>
+        <button class="icon-btn" id="helpBtn">❔ Help</button>
         <button class="icon-btn" id="logoutBtn">↪ Log out</button>
       </div>
     </header>
@@ -308,6 +319,42 @@
       <div class="sheet-head"><h3>Add to home screen</h3><button class="sheet-close" data-close>✕</button></div>
       <div class="sheet-body">
         <div class="install-steps" id="installSteps"></div>
+      </div>
+    </div>
+
+    <!-- help / user guide sheet -->
+    <div class="sheet" id="helpSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><h3>How Cart Corral works</h3><button class="sheet-close" data-close>✕</button></div>
+      <div class="sheet-body help-body">
+
+        <h4>🛒 What is this?</h4>
+        <p>Cart Corral is an independent, unofficial tool for reporting Target shopping carts left in parking lots, streets, or other public spots — not a Target app. Reporting a cart helps it actually get picked up and returned.</p>
+
+        <h4>📍 Reporting a cart</h4>
+        <p>Tap the big <b>⊕</b> button in the bottom right, then tap the spot on the map where you saw the cart. A pin drops there. Add a note if you want (e.g. "blocking a handicap spot"), then tap <b>Drop this pin</b>. Don't want to tap manually? Tap <b>Use my location</b> in the banner instead, and it'll use your device's GPS.</p>
+        <p>A fresh report shows up as a <b>gold pin</b> and starts at <b>0 points</b> — see below for how it earns points.</p>
+
+        <h4>✅ Getting a report verified</h4>
+        <p>A gold pin needs to get "verified" (turns <b>green</b>) before its points count for real. There are two ways that happens:</p>
+        <ul>
+          <li><b>Someone confirms it in person.</b> If you're physically standing near a gold pin (within about 30 feet), tap it and hit <b>"I'm here — confirm it"</b>. The app checks your real location to make sure you're actually there. This instantly verifies the pin and gives <b>+5 points</b> to both the original reporter and you.</li>
+          <li><b>Enough people vouch for it remotely.</b> If you believe a report but aren't there in person, tap the pin and hit <b>"Looks legit"</b>. You get <b>+1 point</b> for vouching. Once <b>3 different people</b> have vouched for the same pin, it automatically verifies — same as an in-person confirm — and the reporter gets their <b>+5 point</b> bonus too.</li>
+        </ul>
+        <p>You can't confirm or vouch for your own report — that's what keeps the points honest.</p>
+
+        <h4>🚩 Something looks wrong</h4>
+        <p>See a pin that's fake, spam, or clearly wrong? Tap it and hit <b>"Flag as fake / spam"</b>. Once a pin gets 3 flags from different people, it's automatically hidden from the map.</p>
+
+        <h4>🗑 Made a mistake?</h4>
+        <p>Tap a pin <i>you</i> reported and you'll see a <b>"Delete my report"</b> button — use it any time to remove a mis-tap or a pin that's no longer accurate.</p>
+
+        <h4>🏆 Points &amp; leaderboard</h4>
+        <p>Tap the <b>🏆</b> button in the header to see everyone's total points, ranked. Points come from: getting your own reports verified (+5), confirming someone else's report in person (+5), and vouching for reports remotely (+1 each).</p>
+
+        <h4>🔒 Your data</h4>
+        <p>Reported locations may be shared with retailers like Target to help them recover carts — that's the actual point of the app. See the full <a href="terms.html" target="_blank" style="color:var(--wood);">Terms &amp; Privacy Notice</a> for details.</p>
+
       </div>
     </div>
 
@@ -533,7 +580,9 @@ async function refreshSightings(){
     if(isMine){
       actionBtn = `<button class="popup-btn" data-delete="${r.id}">🗑 Delete my report</button>`;
     } else if(r.status === 'unconfirmed'){
+      const vouches = r.vouch_count || 0;
       actionBtn = `<button class="popup-btn popup-btn-confirm" data-confirm="${r.id}">✓ I'm here — confirm it (+5 pts)</button>
+                   <button class="popup-btn popup-btn-vouch" data-vouch="${r.id}" style="margin-top:6px;">👍 Looks legit (+1 pt) — ${vouches}/3 vouches</button>
                    <button class="popup-btn" data-flag="${r.id}" style="margin-top:6px;">🚩 Flag as fake / spam</button>`;
     } else {
       actionBtn = `<button class="popup-btn" data-flag="${r.id}">🚩 Flag as fake / spam</button>`;
@@ -551,6 +600,8 @@ async function refreshSightings(){
       if(flagBtn) flagBtn.addEventListener('click', ()=>flagSighting(r.id));
       const confirmBtn = document.querySelector(`[data-confirm="${r.id}"]`);
       if(confirmBtn) confirmBtn.addEventListener('click', ()=>confirmSighting(r.id, confirmBtn));
+      const vouchBtn = document.querySelector(`[data-vouch="${r.id}"]`);
+      if(vouchBtn) vouchBtn.addEventListener('click', ()=>vouchSighting(r.id, vouchBtn));
       const deleteBtn = document.querySelector(`[data-delete="${r.id}"]`);
       if(deleteBtn) deleteBtn.addEventListener('click', ()=>deleteSighting(r.id));
     });
@@ -583,6 +634,28 @@ async function confirmSighting(id, btnEl){
     else if(e.message && e.message.includes('own report')) msg = "You can't confirm your own report";
     else if(e.message && e.message.includes('Already confirmed')) msg = 'Already confirmed by someone else';
     else if(e.code === 1 || /denied/i.test(e.message||'')) msg = 'Location permission needed to confirm';
+    toast(msg);
+    btnEl.disabled = false;
+    btnEl.textContent = originalLabel;
+  }
+}
+
+async function vouchSighting(id, btnEl){
+  const originalLabel = btnEl.textContent;
+  btnEl.disabled = true;
+  btnEl.textContent = 'Vouching…';
+  try{
+    const { error } = await sb.rpc('vouch_sighting', { p_sighting_id: id });
+    if(error) throw error;
+    toast('Thanks for vouching! +1 pt');
+    map.closePopup();
+    await refreshSightings();
+    await loadMyProfile();
+  }catch(e){
+    let msg = 'Could not vouch — try again';
+    if(e.message && e.message.includes('Already vouched')) msg = "You've already vouched for this one";
+    else if(e.message && e.message.includes('own report')) msg = "You can't vouch for your own report";
+    else if(e.message && e.message.includes('Already confirmed')) msg = 'Already confirmed';
     toast(msg);
     btnEl.disabled = false;
     btnEl.textContent = originalLabel;
@@ -643,6 +716,7 @@ function placePreview(lat, lng){
 }
 
 document.getElementById('scoreBtn').addEventListener('click', async ()=>{ await renderBoard(); openSheet('boardSheet'); });
+document.getElementById('helpBtn').addEventListener('click', ()=>openSheet('helpSheet'));
 document.getElementById('installHint').addEventListener('click', ()=>openSheet('installSheet'));
 document.getElementById('overlay').addEventListener('click', closeAllSheets);
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', ()=>{
